@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Guardian model - representing family members or patient caregivers
+model Guardian {
+  id            String   @id @default(uuid())
+  firstName     String   @db.VarChar(100)
+  lastName      String   @db.VarChar(100)
+  email         String?  @unique @db.VarChar(255)
+  phoneNumber   String?  @db.VarChar(20)
+  address       String?
+  city          String?  @db.VarChar(100)
+  state         String?  @db.VarChar(50)
+  zipCode       String?  @db.VarChar(10)
+  relationship  String?  @db.VarChar(100)
+  status        String   @default("active") @db.VarChar(50) // active, inactive
+  notes         String?
+
+  // Relations
+  patients      Patient[]
+  careRequests  CareRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("guardians")
+}
+
+// Patient model
+model Patient {
+  id                      String   @id @default(uuid())
+  firstName               String   @db.VarChar(100)
+  lastName                String   @db.VarChar(100)
+  dateOfBirth             DateTime? @db.Date
+  email                   String?  @unique @db.VarChar(255)
+  phoneNumber             String?  @db.VarChar(20)
+  address                 String?
+  city                    String?  @db.VarChar(100)
+  state                   String?  @db.VarChar(50)
+  zipCode                 String?  @db.VarChar(10)
+  medicalConditions       String?
+  medications             String?
+  emergencyContactName    String?  @db.VarChar(100)
+  emergencyContactPhone   String?  @db.VarChar(20)
+  status                  String   @default("active") @db.VarChar(50) // active, inactive, discharged
+  notes                   String?
+
+  // Relations
+  guardianId        String?
+  guardian          Guardian? @relation(fields: [guardianId], references: [id], onDelete: SetNull)
+  careRequests      CareRequest[]
+  assignments       Assignment[]
+  incidents         Incident[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guardianId])
+  @@index([status])
+  @@map("patients")
+}
+
+// Caregiver model
+model Caregiver {
+  id                    String   @id @default(uuid())
+  firstName             String   @db.VarChar(100)
+  lastName              String   @db.VarChar(100)
+  email                 String?  @unique @db.VarChar(255)
+  phoneNumber           String?  @db.VarChar(20)
+  specialty             String?  @db.VarChar(100) // RN, LPN, CNA, etc.
+  licenseNumber         String?  @db.VarChar(100)
+  certificationExpiry   DateTime? @db.Date
+  availabilityStatus    String   @default("available") @db.VarChar(50) // available, unavailable, on-leave
+  hourlyRate            Decimal? @db.Decimal(10, 2)
+  address               String?
+  city                  String?  @db.VarChar(100)
+  state                 String?  @db.VarChar(50)
+  zipCode               String?  @db.VarChar(10)
+  status                String   @default("active") @db.VarChar(50) // active, inactive
+  notes                 String?
+
+  // Relations
+  assignments     Assignment[]
+  incidents       Incident[]
+  leaveRequests   LeaveRequest[]
+  approvedRequests LeaveRequest[] @relation("ApprovedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([availabilityStatus])
+  @@map("caregivers")
+}
+
+// CareRequest model
+model CareRequest {
+  id                  String   @id @default(uuid())
+  careType            String?  @db.VarChar(100) // Personal Care, Medical, Companion Care, etc.
+  priority            String   @default("normal") @db.VarChar(50) // low, normal, high, urgent
+  startDate           DateTime @db.Date
+  endDate             DateTime? @db.Date
+  hoursPerWeek        Int?
+  description         String?
+  specialRequirements String?
+  status              String   @default("pending") @db.VarChar(50) // pending, approved, active, completed, cancelled
+  notes               String?
+
+  // Relations
+  patientId   String
+  patient     Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  guardianId  String
+  guardian    Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  assignments Assignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([guardianId])
+  @@index([status])
+  @@map("care_requests")
+}
+
+// Assignment model
+model Assignment {
+  id                String   @id @default(uuid())
+  startDate         DateTime @db.Date
+  endDate           DateTime? @db.Date
+  shiftStartTime    DateTime? @db.Time
+  shiftEndTime      DateTime? @db.Time
+  notesForCaregiver String?
+  status            String   @default("active") @db.VarChar(50) // pending, active, completed, cancelled
+  notes             String?
+
+  // Relations
+  patientId       String
+  patient         Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  caregiverId     String
+  caregiver       Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+  careRequestId   String?
+  careRequest     CareRequest? @relation(fields: [careRequestId], references: [id], onDelete: SetNull)
+  incidents       Incident[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([caregiverId])
+  @@index([careRequestId])
+  @@index([status])
+  @@map("assignments")
+}
+
+// LeaveRequest model
+model LeaveRequest {
+  id          String   @id @default(uuid())
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  leaveType   String   @db.VarChar(50) // vacation, sick, personal, emergency
+  reason      String?
+  status      String   @default("pending") @db.VarChar(50) // pending, approved, rejected
+  notes       String?
+
+  // Relations
+  caregiverId String
+  caregiver   Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+  approvedById String?
+  approvedBy  Caregiver? @relation("ApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([caregiverId])
+  @@index([status])
+  @@map("leave_requests")
+}
+
+// Incident model
+model Incident {
+  id          String   @id @default(uuid())
+  incidentType String  @db.VarChar(100) // Fall, Medication Error, Behavioral, etc.
+  severity    String   @default("medium") @db.VarChar(50) // low, medium, high, critical
+  description String   @db.Text
+  actionsTaken String?
+  reportedAt  DateTime @default(now())
+  incidentDate DateTime @db.Date
+  status      String   @default("open") @db.VarChar(50) // open, investigating, resolved, closed
+  notes       String?
+
+  // Relations
+  patientId     String
+  patient       Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  caregiverId   String?
+  caregiver     Caregiver? @relation(fields: [caregiverId], references: [id], onDelete: SetNull)
+  assignmentId  String?
+  assignment    Assignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([caregiverId])
+  @@index([assignmentId])
+  @@index([severity])
+  @@map("incidents")
+}
+
+// AuditLog model for tracking changes
+model AuditLog {
+  id        String   @id @default(uuid())
+  tableName String?  @db.VarChar(100)
+  recordId  String?
+  action    String?  @db.VarChar(50) // INSERT, UPDATE, DELETE
+  oldValues Json?
+  newValues Json?
+  userId    String?  @db.VarChar(255)
+
+  createdAt DateTime @default(now())
+
+  @@index([tableName])
+  @@index([recordId])
+  @@map("audit_logs")
+}
